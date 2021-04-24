@@ -22,7 +22,7 @@ jobs:
       - name: Build with Docker
         run: |
           VERSION=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
-          docker build -f Dockerfile.master -t "$REGISTRY_HOSTNAME"/"$REPOSITORY_NAMESPACE"/"$IMAGE_NAME":${VERSION} .
+          docker build -t "$REGISTRY_HOSTNAME"/"$REPOSITORY_NAMESPACE"/"$IMAGE_NAME":${VERSION} .
 
       # ビルド済みのイメージをGithub PackagesへPush
       - name: Push the image to Github Packages
