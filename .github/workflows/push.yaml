@@ -1,0 +1,34 @@
+name: Build and Push
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+# Workflowsで使用する環境変数を定義
+env:
+  REGISTRY_HOSTNAME: ghcr.io
+  REPOSITORY_NAMESPACE: n-creativesystem
+  IMAGE_NAME: kube-oidc-proxy
+
+jobs:
+  setup-build-push:
+    name: Setup, Build, Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      # Docker imageのビルド
+      - name: Build with Docker
+        run: |
+          VERSION=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
+          docker build -f Dockerfile.master -t "$REGISTRY_HOSTNAME"/"$REPOSITORY_NAMESPACE"/"$IMAGE_NAME":${VERSION} .
+
+      # ビルド済みのイメージをGithub PackagesへPush
+      - name: Push the image to Github Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GITHUB_TOKEN}" | docker login $REGISTRY_HOSTNAME -u $GITHUB_ACTOR --password-stdin
+          VERSION=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
+          docker push $REGISTRY_HOSTNAME/$REPOSITORY_NAMESPACE/$IMAGE_NAME:${version}
