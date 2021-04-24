@@ -31,4 +31,4 @@ jobs:
         run: |
           echo "${GITHUB_TOKEN}" | docker login $REGISTRY_HOSTNAME -u $GITHUB_ACTOR --password-stdin
           VERSION=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
-          docker push $REGISTRY_HOSTNAME/$REPOSITORY_NAMESPACE/$IMAGE_NAME:${version}
+          docker push $REGISTRY_HOSTNAME/$REPOSITORY_NAMESPACE/$IMAGE_NAME:${VERSION}
