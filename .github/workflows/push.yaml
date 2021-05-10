@@ -8,7 +8,7 @@ on:
 env:
   REGISTRY_HOSTNAME: ghcr.io
   REPOSITORY_NAMESPACE: n-creativesystem
-  IMAGE_NAME: kube-oidc-proxy
+  IMAGE_NAME: oidc-proxy
 
 jobs:
   setup-build-push:

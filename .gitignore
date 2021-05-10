@@ -14,4 +14,12 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 *.env
-kube-oidc-proxy
+oidc-proxy
+/tmp
+__debug_bin
+application.yaml
+test.json
+test.toml
+test.yaml
+test.yml
+plugin/memory

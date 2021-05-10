@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -15,63 +16,81 @@ type (
 		Warning(v ...interface{})
 		Error(v ...interface{})
 		Critical(v ...interface{})
-
-		// Debugf(format string, v ...interface{})
-		// Infof(format string, v ...interface{})
-		// Warningf(format string, v ...interface{})
-		// Errorf(format string, v ...interface{})
-		// Criticalf(format string, v ...interface{})
-
-		// Debugln(v ...interface{})
-		// Infoln(v ...interface{})
-		// Warningln(v ...interface{})
-		// Errorln(v ...interface{})
-		// Criticalln(v ...interface{})
 	}
 
 	logger struct {
 		logger   *log.Logger
 		writer   io.Writer
-		logLevel int
+		logLevel LogLevel
 	}
 )
 
 var Log ILogger
 
-func New(writer io.Writer, logLevel int) ILogger {
+func New(writer io.Writer, logLevel LogLevel, prefix ...string) ILogger {
+	p := ""
+	if len(prefix) > 0 {
+		p = prefix[0]
+	}
 	return &logger{
-		logger:   log.New(writer, "", log.LstdFlags),
+		logger:   log.New(writer, p, log.LstdFlags),
 		writer:   writer,
 		logLevel: logLevel,
 	}
 }
 
+type LogLevel int
+
+func Convert(level string) LogLevel {
+	switch strings.ToLower(level) {
+	case "critical":
+		return Critical
+	case "error", "err":
+		return Error
+	case "warn", "warnign":
+		return Warn
+	case "info", "prod":
+		return Info
+	case "debug", "dev":
+		return Debug
+	default:
+		return Info
+	}
+}
+
 const (
-	critical = iota
-	err
-	warn
-	info
-	debug
+	Critical LogLevel = iota
+	Error
+	Warn
+	Info
+	Debug
 )
 
-func (l *logger) isEnabledLevel(level int) bool {
+func (l *logger) isEnabledLevel(level LogLevel) bool {
 	return level <= l.logLevel
 }
 
 func getTrace() string {
 	if pt, file, line, ok := runtime.Caller(3); ok {
 		funcName := runtime.FuncForPC(pt).Name()
-		return fmt.Sprintf("%20s:%d | %20s | ", file, line, funcName)
+		return fmt.Sprintf("%s - %d\tfunc:%s", file, line, funcName)
 	}
 	return ""
 }
 
-func (l *logger) print(loglevel int, v ...interface{}) {
+func (l *logger) print(loglevel LogLevel, v ...interface{}) {
 	if l.isEnabledLevel(loglevel) {
 		now := time.Now().Format("2006/01/02 - 15:04:05")
-		trace := getTrace()
-		v = append([]interface{}{now, trace}, v...)
-		fmt.Fprintln(l.writer, v...)
+		// trace := getTrace()
+		print := fmt.Sprint(v...)
+		prints := strings.Split(print, "\n")
+		for _, p := range prints {
+			if strings.TrimSpace(p) != "" {
+				values := []interface{}{now, p}
+				value := fmt.Sprintf("time:%s\tmessage:%v", values...)
+				fmt.Fprintln(l.writer, value)
+			}
+		}
 		// l.logger.Print(v...)
 	}
 }
@@ -88,11 +107,11 @@ func (l *logger) print(loglevel int, v ...interface{}) {
 // 	}
 // }
 
-func (l *logger) Debug(v ...interface{})    { l.print(debug, v...) }
-func (l *logger) Info(v ...interface{})     { l.print(info, v...) }
-func (l *logger) Warning(v ...interface{})  { l.print(warn, v...) }
-func (l *logger) Error(v ...interface{})    { l.print(err, v...) }
-func (l *logger) Critical(v ...interface{}) { l.print(critical, v...) }
+func (l *logger) Debug(v ...interface{})    { l.print(Debug, v...) }
+func (l *logger) Info(v ...interface{})     { l.print(Info, v...) }
+func (l *logger) Warning(v ...interface{})  { l.print(Warn, v...) }
+func (l *logger) Error(v ...interface{})    { l.print(Error, v...) }
+func (l *logger) Critical(v ...interface{}) { l.print(Critical, v...) }
 
 // func (l *logger) Debugf(format string, v ...interface{})    { l.printf(debug, format, v...) }
 // func (l *logger) Infof(format string, v ...interface{})     { l.printf(info, format, v...) }

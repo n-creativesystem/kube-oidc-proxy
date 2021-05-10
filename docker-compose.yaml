@@ -13,3 +13,34 @@ services:
     container_name: kube-oidc-proxy-dev
     environment:
       TZ: Asia/Tokyo
+    networks:
+      - oidc-proxy
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.4.15
+    container_name: kube-oidc-proxy-etcd
+    volumes:
+      - ./tmp/etcd:/etcd-data
+    ports:
+      - 2379:2379
+    command: >
+      /usr/local/bin/etcd
+      --name s1
+      --data-dir /etcd-data
+      --listen-client-urls http://0.0.0.0:2379
+      --advertise-client-urls http://0.0.0.0:2379
+      --listen-peer-urls http://0.0.0.0:2380
+      --initial-advertise-peer-urls http://0.0.0.0:2380
+      --initial-cluster s1=http://0.0.0.0:2380
+      --initial-cluster-token tkn
+      --initial-cluster-state new
+      --log-level info
+      --logger zap
+      --log-outputs stderr
+    networks:
+      - oidc-proxy
+networks:
+  default:
+    name: bridge
+  oidc-proxy:
+    name: oidc-proxy
+    driver: bridge

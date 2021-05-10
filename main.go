@@ -1,10 +1,15 @@
 package main
 
 import (
-	"kube-oidc-proxy/app"
+	"os"
+
+	"github.com/n-creativesystem/oidc-proxy/adapter"
+	"github.com/n-creativesystem/oidc-proxy/logger"
 )
 
 func main() {
-	app.Init()
-	StartServer()
+	app := adapter.New()
+	if err := app.Run(os.Args); err != nil {
+		logger.Log.Error(err)
+	}
 }

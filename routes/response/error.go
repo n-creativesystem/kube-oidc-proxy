@@ -3,7 +3,7 @@ package response
 import (
 	"net/http"
 
-	"kube-oidc-proxy/logger"
+	"github.com/n-creativesystem/oidc-proxy/logger"
 )
 
 func Error(w http.ResponseWriter, err string, code int) {
