@@ -132,6 +132,7 @@
 | Get | [GetRequest](#proto.GetRequest) | [GetResponse](#proto.GetResponse) |  |
 | Put | [PutRequest](#proto.PutRequest) | [Empty](#proto.Empty) |  |
 | Delete | [DeleteRequest](#proto.DeleteRequest) | [Empty](#proto.Empty) |  |
+| Close | [Empty](#proto.Empty) | [Empty](#proto.Empty) |  |
 
  <!-- end services -->
 

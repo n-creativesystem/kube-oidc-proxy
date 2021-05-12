@@ -29,7 +29,7 @@ type SessionStore struct {
 
 func (c *SessionStore) Close() error {
 	if c.session != nil {
-		return c.session.Close()
+		return c.session.Close(context.Background())
 	}
 	return nil
 }

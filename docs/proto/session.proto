@@ -9,6 +9,7 @@ service Session {
     rpc Get(GetRequest) returns (GetResponse) {}
     rpc Put(PutRequest) returns (Empty) {}
     rpc Delete(DeleteRequest) returns (Empty) {}
+    rpc Close(Empty) returns (Empty) {}
 }
 
 message SettingRequest {

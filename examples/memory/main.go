@@ -68,7 +68,13 @@ func (c *memorySession) Delete(ctx context.Context, key string) error {
 	delete(c.items, key)
 	return nil
 }
-func (c *memorySession) Close() error { return nil }
+func (c *memorySession) Close(ctx context.Context) error {
+	if file != nil {
+		log.Debug("close method: file close")
+		file.Close()
+	}
+	return nil
+}
 func (c *memorySession) Init(ctx context.Context, setting map[string]interface{}) error {
 	if prefix, ok := setting["prefix"].(string); ok {
 		c.prefix = prefix
@@ -108,12 +114,6 @@ func newMemorySession() *memorySession {
 }
 
 func main() {
-	defer func() {
-		if file != nil {
-			log.Debug("file close")
-			file.Close()
-		}
-	}()
 	mPlugin.Sever(&mPlugin.ServerOpts{
 		GRPCSessionFunc: func() session.Session {
 			return newMemorySession()

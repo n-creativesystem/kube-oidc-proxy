@@ -37,6 +37,10 @@ func (c *GRPCSessionServer) Delete(ctx context.Context, r *proto.DeleteRequest) 
 	err := c.Impl.Delete(ctx, r.Key)
 	return &proto.Empty{}, err
 }
+func (c *GRPCSessionServer) Close(ctx context.Context, e *proto.Empty) (*proto.Empty, error) {
+	err := c.Impl.Close(ctx)
+	return &proto.Empty{}, err
+}
 
 type GRPCSessionClient struct {
 	PluginClient *plugin.Client
@@ -85,10 +89,10 @@ func (p *GRPCSessionClient) Init(ctx context.Context, setting map[string]interfa
 	_, err := p.client.Init(ctx, r)
 	return err
 }
-func (p *GRPCSessionClient) Close() error {
+func (p *GRPCSessionClient) Close(ctx context.Context) error {
 	if p.PluginClient == nil {
 		return nil
 	}
-	p.PluginClient.Kill()
-	return nil
+	_, err := p.client.Close(ctx, &proto.Empty{})
+	return err
 }
