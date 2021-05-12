@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	app := adapter.New()
+	app := adapter.New(Version, Revision)
 	if err := app.Run(os.Args); err != nil {
 		logger.Log.Error(err)
 	}

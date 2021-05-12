@@ -1,4 +1,4 @@
-package errors
+package routes
 
 import (
 	"context"
@@ -14,7 +14,7 @@ const (
 	httpStatusClientClosedRequest = 499
 )
 
-func ErrorHandler(log logger.ILogger) func(w http.ResponseWriter, r *http.Request, err error) {
+func errorResponse(log logger.ILogger) func(w http.ResponseWriter, r *http.Request, err error) {
 	return func(w http.ResponseWriter, r *http.Request, err error) {
 		status := http.StatusBadGateway
 		switch err {
@@ -49,4 +49,9 @@ func UnAuthorizedResponse(w http.ResponseWriter, location string) {
 	if err == nil {
 		w.Write(buf)
 	}
+}
+
+func responseError(log logger.ILogger, w http.ResponseWriter, err string, code int) {
+	log.Critical(err)
+	http.Error(w, err, code)
 }

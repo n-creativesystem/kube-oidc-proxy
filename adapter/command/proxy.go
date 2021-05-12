@@ -1,9 +1,16 @@
 package command
 
 import (
+	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/n-creativesystem/oidc-proxy/app"
 	"github.com/n-creativesystem/oidc-proxy/logger"
 	"github.com/n-creativesystem/oidc-proxy/watch"
 	"github.com/n-creativesystem/oidc-proxy/watch/cert"
@@ -12,8 +19,8 @@ import (
 )
 
 const (
-	run     = "run"
 	appConf = "config"
+	// sessionPlugin = "session-plugin"
 )
 
 var ProxyCommand = &cli.Command{
@@ -33,38 +40,71 @@ var ProxyCommand = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				https := true
-				appWatcher, err := AppConfig(c.String(appConf))
-				if err != nil {
-					return err
-				}
-				appConf := appWatcher.Watching.(*watchConfig.Watch).Config
-				cmWatcher, err := CertConfig(appConf.SslCertificate, appConf.SslCertificateKey)
-				if err != nil {
-					if err == watch.ErrFileNotFound {
-						https = false
-					} else {
-						return err
-					}
-				}
-				multiHost := appWatcher.Watching.(*watchConfig.Watch).MultiHost
-				defer multiHost.Close()
-				s := &http.Server{
-					Addr:    appConf.GetPort(),
-					Handler: multiHost,
-				}
-				logger.Log.Info("Application Start")
-				if https {
-					s.TLSConfig = &tls.Config{
-						GetCertificate: cmWatcher.Watching.(*cert.Watch).GetCertificate,
-					}
-					return s.ListenAndServeTLS("", "")
-				} else {
-					return s.ListenAndServe()
-				}
+				return ProxyAction(c.String(appConf))
 			},
 		},
 	},
+}
+
+func ProxyAction(configFilename string) error {
+	https := true
+	appWatcher, err := AppConfig(configFilename)
+	if err != nil {
+		return err
+	}
+	appConf := appWatcher.Watching.(*watchConfig.Watch).Config
+	cmWatcher, err := CertConfig(appConf.SslCertificate, appConf.SslCertificateKey)
+	if err != nil {
+		if err == watch.ErrFileNotFound {
+			https = false
+		} else {
+			return err
+		}
+	}
+	multiHost := appWatcher.Watching.(*watchConfig.Watch).MultiHost
+	s := &http.Server{
+		Addr:    appConf.GetPort(),
+		Handler: multiHost,
+	}
+	logger.Log.Info("Application Start")
+	if https {
+		s.TLSConfig = &tls.Config{
+			GetCertificate: cmWatcher.Watching.(*cert.Watch).GetCertificate,
+		}
+		go func() {
+			if err := s.ListenAndServeTLS("", ""); err != nil {
+				logger.Log.Error(err)
+			}
+		}()
+	} else {
+		go func() {
+			if err := s.ListenAndServe(); err != nil {
+				logger.Log.Error(err)
+			}
+		}()
+	}
+	signals := []os.Signal{
+		syscall.SIGINT,
+		syscall.SIGQUIT,
+		syscall.SIGABRT,
+		syscall.SIGKILL,
+		syscall.SIGTERM,
+		syscall.SIGSTOP,
+	}
+	osNotify := make(chan os.Signal, 1)
+	signal.Notify(osNotify, signals...)
+	sig := <-osNotify
+	logger.Log.Info(fmt.Sprintf("signal: %v", sig))
+	s.RegisterOnShutdown(func() {
+		for _, server := range appConf.Servers {
+			if dispose := app.Store.Dispose(server.ServerName); dispose != nil {
+				dispose.Close()
+			}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+	return s.Shutdown(ctx)
 }
 
 func AppConfig(applicationFilePath string) (*watch.Watch, error) {

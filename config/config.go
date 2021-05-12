@@ -15,11 +15,13 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	hplugin "github.com/hashicorp/go-plugin"
-	"github.com/n-creativesystem/oidc-proxy/cache"
+	"github.com/n-creativesystem/oidc-proxy/app"
 	"github.com/n-creativesystem/oidc-proxy/logger"
 	"github.com/n-creativesystem/oidc-proxy/plugin"
+	"github.com/n-creativesystem/oidc-proxy/session"
 	"github.com/n-creativesystem/oidc-proxy/store"
 	"github.com/prometheus/common/log"
+	"golang.org/x/oauth2"
 
 	toml "github.com/pelletier/go-toml"
 	"gopkg.in/yaml.v3"
@@ -84,78 +86,72 @@ func (c *Config) Output(filename string) error {
 
 // Servers
 type Servers struct {
-	Oidc        Oidc              `yaml:"oidc" toml:"oidc" json:"oidc"`
-	Locations   []Locations       `yaml:"locations" toml:"locations" json:"locations"`
-	Logging     Logging           `yaml:"logging" toml:"logging" json:"logging"`
-	SessionName string            `yaml:"session_name" toml:"session_name" json:"session_name"`
-	ServerName  string            `yaml:"server_name" toml:"server_name" json:"server_name"`
-	CacheConfig Cache             `yaml:"cache" toml:"cache" json:"cache"`
-	Login       string            `yaml:"login" toml:"login" json:"login"`
-	Callback    string            `yaml:"callback" toml:"callback" json:"callback"`
-	Logout      string            `yaml:"logout" toml:"logout" json:"logout"`
-	Store       *store.CacheStore `yaml:"-" toml:"-" json:"-"`
-	Log         logger.ILogger    `yaml:"-" toml:"-" json:"-"`
-	port        string            `yaml:"-" toml:"-" json:"-"`
+	Oidc       Oidc        `yaml:"oidc" toml:"oidc" json:"oidc"`
+	Locations  []Locations `yaml:"locations" toml:"locations" json:"locations"`
+	Logging    Logging     `yaml:"logging" toml:"logging" json:"logging"`
+	CookieName string      `yaml:"cookie_name" toml:"cookie_name" json:"cookie_name"`
+	ServerName string      `yaml:"server_name" toml:"server_name" json:"server_name"`
+	Session    Session     `yaml:"session" toml:"session" json:"session"`
+	Login      string      `yaml:"login" toml:"login" json:"login"`
+	Callback   string      `yaml:"callback" toml:"callback" json:"callback"`
+	Logout     string      `yaml:"logout" toml:"logout" json:"logout"`
+	Redirect   bool        `yaml:"redirect" toml:"redirect" json:"redirect"`
+	port       string      `yaml:"-" toml:"-" json:"-"`
 }
 
-func (s *Servers) newCacheClient(client *hplugin.Client) cache.Cache {
-	var storage cache.Cache
+func (s *Servers) newSessionClient(client *hplugin.Client) session.Session {
+	var storage session.Session
 	rpcClient, err := client.Client()
 	if err != nil {
 		log.Error(err)
 	}
 	if rpcClient != nil {
-		raw, err := rpcClient.Dispense("cache")
+		raw, err := rpcClient.Dispense("session")
 		if err != nil {
 			log.Error(err)
 		}
 		if raw != nil {
-			if val, ok := raw.(*plugin.GRPCCache); ok {
+			if val, ok := raw.(*plugin.GRPCSessionClient); ok {
 				val.PluginClient = client
 				storage = val
 			}
 		}
 	}
 	// if storage == nil {
-	// 	storage = cache.New()
+	// 	storage = session.New()
 	// }
-	storage.Setting(context.TODO(), cache.CacheSetting{
-		Endpoints: s.CacheConfig.Endpoints,
-		Username:  s.CacheConfig.Username,
-		Password:  s.CacheConfig.Password,
-		CacheTime: s.CacheConfig.CacheTime,
-	})
+	storage.Init(context.TODO(), s.Session.Args)
 	return storage
 }
 
 func (s *Servers) init(port string) {
-	log := s.Logging.GetLogger()
-	cachePlugin := hplugin.NewClient(&hplugin.ClientConfig{
+	cmd := exec.Command(s.Session.GetSessionPlugin())
+	var sessionPlugin *hplugin.Client
+	var dispose *app.Dispose
+	dispose = app.Store.Dispose(s.ServerName)
+	if dispose != nil && dispose.Plugin != nil {
+		dispose.Close()
+	}
+	sessionPlugin = hplugin.NewClient(&hplugin.ClientConfig{
 		HandshakeConfig:  plugin.Handshake,
 		VersionedPlugins: plugin.VersionedPlugins,
-		Cmd:              exec.Command(s.CacheConfig.GetCacheName()),
+		Cmd:              cmd,
 		AllowedProtocols: []hplugin.Protocol{hplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Level:      hclog.LevelFromString(s.Logging.Level),
 			Output:     s.Logging.writer,
 			TimeFormat: "2006/01/02 - 15:04:05",
-			Name:       "cache",
+			Name:       "session",
 		}),
+		Managed: true,
 	})
-	storage := s.newCacheClient(cachePlugin)
-	// go func() {
-	// 	t := time.NewTicker(time.Second)
-	// 	defer t.Stop()
-	// 	for {
-	// 		<-t.C
-	// 		now := time.Now().UnixNano()
-	// 		storage.Expired(now)
-	// 	}
-	// }()
-	codecs := s.CacheConfig.GetCodecs()
-	store := store.NewStore(storage, cachePlugin, codecs...)
-	s.Store = store
-	s.Log = log
+	storage := s.newSessionClient(sessionPlugin)
+	codecs := s.Session.GetCodecs()
+	store := store.NewStore(storage, codecs...)
+	app.Store.Add(s.ServerName, &app.Dispose{
+		Store:  store,
+		Plugin: sessionPlugin,
+	})
 	s.port = port
 }
 
@@ -163,7 +159,7 @@ func (s *Servers) Is() error {
 	msg := func(message string) string {
 		return fmt.Sprintf("%s: %s", s.ServerName, message)
 	}
-	if !s.CacheConfig.IsCodecs() {
+	if !s.Session.IsCodecs() {
 		return errors.New(msg("no codecs provided"))
 	}
 
@@ -182,27 +178,59 @@ type Oidc struct {
 	ClientSecret string   `yaml:"client_secret" toml:"client_secret" json:"client_secret"`
 	RedirectUrl  string   `yaml:"redirect_url" toml:"redirect_url" json:"redirect_url"`
 	Logout       string   `yaml:"logout" toml:"logout" json:"logout"`
+	// GrantType    string    `yaml:"grant_type" toml:"grant_type" json:"grant_type"`
+	Audiences []string `yaml:"audiences" toml:"audiences" json:"audiences"`
 }
 
-// Cache
-type Cache struct {
-	Name      string   `yaml:"name" toml:"name" json:"name"`
-	Codecs    []string `yaml:"codecs" toml:"codecs" json:"codecs"`
-	Endpoints []string `yaml:"endpoints" toml:"endpoints" json:"endpoints"`
-	CacheTime int      `yaml:"cache_time" toml:"cache_time" json:"cache_time"`
-	Username  string   `yaml:"username" toml:"username" json:"username"`
-	Password  string   `yaml:"password" toml:"password" json:"password"`
+func (o *Oidc) SetValues() []oauth2.AuthCodeOption {
+	var authCodeOptions []oauth2.AuthCodeOption
+	var audiences Audiences
+	for _, audience := range o.Audiences {
+		audiences = append(audiences, Audience(audience))
+	}
+	authCodeOptions = append(authCodeOptions, audiences.SetValue()...)
+	return authCodeOptions
 }
 
-func (c *Cache) GetCacheName() string {
-	return filepath.Join("./", "plugin", c.Name)
+// Audience
+type Audience string
+
+func (a Audience) String() string {
+	return string(a)
 }
 
-func (c *Cache) IsCodecs() bool {
+type Audiences []Audience
+
+func (a Audiences) SetValue() []oauth2.AuthCodeOption {
+	var audiences []oauth2.AuthCodeOption
+	for _, audience := range a {
+		audiences = append(audiences, oauth2.SetAuthURLParam("audience", audience.String()))
+	}
+	return audiences
+}
+
+// Session
+type Session struct {
+	Name   string                 `yaml:"name" toml:"name" json:"name"`
+	Codecs []string               `yaml:"codecs" toml:"codecs" json:"codecs"`
+	Args   map[string]interface{} `yaml:"args" toml:"args" json:"args"`
+}
+
+const defaultSessionPlugin = "memory"
+
+func (c *Session) GetSessionPlugin() string {
+	const pluginDir = "oidc-plugin"
+	if c.Name != "" {
+		return filepath.Join("./", pluginDir, c.Name)
+	}
+	return filepath.Join("./", pluginDir, defaultSessionPlugin)
+}
+
+func (c *Session) IsCodecs() bool {
 	return len(c.Codecs) > 0
 }
 
-func (c *Cache) GetCodecs() [][]byte {
+func (c *Session) GetCodecs() [][]byte {
 	var codecs [][]byte
 	for _, codec := range c.Codecs {
 		codecs = append(codecs, []byte(codec))
@@ -212,22 +240,29 @@ func (c *Cache) GetCodecs() [][]byte {
 
 // Locations
 type Locations struct {
-	ProxyPass string `yaml:"proxy_pass" toml:"proxy_pass" json:"proxy_pass"`
-	Urls      []Urls `yaml:"urls" toml:"urls" json:"urls"`
+	ProxyPass      string `yaml:"proxy_pass" toml:"proxy_pass" json:"proxy_pass"`
+	ProxySSLVerify string `yaml:"proxy_ssl_verify" toml:"proxy_ssl_verify" json:"proxy_ssl_verify"`
+	Urls           []Urls `yaml:"urls" toml:"urls" json:"urls"`
+}
+
+func (l *Locations) IsProxySSLVerify() bool {
+	return l.ProxySSLVerify == "on"
 }
 
 // Urls
 type Urls struct {
 	Path  string `yaml:"path" toml:"path" json:"path"`
 	Token string `yaml:"token" toml:"token" json:"token"`
+	Type  string `yaml:"type" toml:"type" json:"type"`
 }
 
 // Logging
 type Logging struct {
-	Level    string    `yaml:"level" toml:"level" json:"level"`
-	FileName string    `yaml:"filename" toml:"filename" json:"filename"`
-	Prefix   string    `yaml:"prefix" toml:"prefix" json:"prefix"`
-	writer   io.Writer `yaml:"-"`
+	Level      string    `yaml:"level" toml:"level" json:"level"`
+	FileName   string    `yaml:"filename" toml:"filename" json:"filename"`
+	LogFormat  string    `yaml:"logformat" toml:"logformat" json:"logformat"`
+	TimeFormat string    `yaml:"timeformat" toml:"timeformat" json:"timeformat"`
+	writer     io.Writer `yaml:"-"`
 }
 
 func (l *Logging) GetLogger() logger.ILogger {
@@ -242,7 +277,7 @@ func (l *Logging) GetLogger() logger.ILogger {
 		writer = append(writer, os.Stdout)
 	}
 	l.writer = io.MultiWriter(writer...)
-	return logger.New(l.writer, logger.Convert(l.Level), l.Prefix)
+	return logger.New(l.writer, logger.Convert(l.Level), logger.ConvertLogFmt(l.LogFormat), logger.ConvertTimeFmt(l.TimeFormat))
 }
 
 type GetConfiguration func() Servers

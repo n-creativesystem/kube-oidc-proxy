@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/sessions v1.2.1
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.4.1
+	github.com/mitchellh/go-testing-interface v1.0.0
 	github.com/pelletier/go-toml v1.9.0
 	github.com/pkg/errors v0.9.1
 	github.com/pquerna/cachecontrol v0.1.0 // indirect

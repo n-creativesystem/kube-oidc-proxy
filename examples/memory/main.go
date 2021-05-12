@@ -3,13 +3,19 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"path"
 	"sync"
 
-	"github.com/n-creativesystem/oidc-proxy/cache"
 	mPlugin "github.com/n-creativesystem/oidc-proxy/examples/memory/plugin"
-	"github.com/n-creativesystem/oidc-proxy/plugin"
+	"github.com/n-creativesystem/oidc-proxy/logger"
+	"github.com/n-creativesystem/oidc-proxy/session"
 )
+
+var log logger.ILogger
+var file *os.File
 
 type item struct {
 	Value   string `json:"value"`
@@ -27,43 +33,73 @@ func (i *item) ToJson() string {
 	return string(buf)
 }
 
-type memoryCache struct {
+type memorySession struct {
 	items  map[string]*item
 	mu     sync.Mutex
 	prefix string
 }
 
-var _ cache.Cache = &memoryCache{}
+var _ session.Session = &memorySession{}
 
-func (c *memoryCache) Get(ctx context.Context, originalKey string) (string, error) {
+func (c *memorySession) Get(ctx context.Context, originalKey string) (string, error) {
 	c.mu.Lock()
 	key := path.Join(c.prefix, originalKey)
 	var s string = ""
 	if v, ok := c.items[key]; ok {
 		s = v.Value
 	}
+	log.Debug(fmt.Sprintf("[GET] %s:%s", key, s))
 	c.mu.Unlock()
 	return s, nil
 }
-func (c *memoryCache) Put(ctx context.Context, originalKey string, value string) error {
+func (c *memorySession) Put(ctx context.Context, originalKey string, value string) error {
 	c.mu.Lock()
 	key := path.Join(c.prefix, originalKey)
 	c.items[key] = newItem(value)
+	log.Debug(fmt.Sprintf("[PUT] %s:%s", key, value))
 	c.mu.Unlock()
 	return nil
 }
-func (c *memoryCache) Delete(ctx context.Context, key string) error {
+func (c *memorySession) Delete(ctx context.Context, key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	key = path.Join(c.prefix, key)
+	log.Debug(fmt.Sprintf("[DEL] %s", key))
 	delete(c.items, key)
 	return nil
 }
-func (c *memoryCache) Close() error                                            { return nil }
-func (c *memoryCache) Setting(ctx context.Context, setting cache.CacheSetting) {}
+func (c *memorySession) Close() error { return nil }
+func (c *memorySession) Init(ctx context.Context, setting map[string]interface{}) error {
+	if prefix, ok := setting["prefix"].(string); ok {
+		c.prefix = prefix
+	}
+	var filename string
+	var ok bool
+	if filename, ok = setting["filename"].(string); !ok {
+		filename = ""
+	}
+	var write io.Writer
+	if filename != "" {
+		var err error
+		if file, err = os.Create(filename); err != nil {
+			write = os.Stdout
+		} else {
+			write = file
+		}
+	} else {
+		write = os.Stdout
+	}
+	var logLevel string
+	if logLevel, ok = setting["loglevel"].(string); !ok {
+		logLevel = logger.Info.String()
+	}
+	log = logger.New(write, logger.Convert(logLevel), logger.FormatLong, logger.FormatDatetime)
+	log.Info(fmt.Sprintf("%#v", setting))
+	return nil
+}
 
-func newMemoryCache() *memoryCache {
-	c := &memoryCache{
+func newMemorySession() *memorySession {
+	c := &memorySession{
 		items:  make(map[string]*item),
 		mu:     sync.Mutex{},
 		prefix: "memory",
@@ -72,11 +108,15 @@ func newMemoryCache() *memoryCache {
 }
 
 func main() {
+	defer func() {
+		if file != nil {
+			log.Debug("file close")
+			file.Close()
+		}
+	}()
 	mPlugin.Sever(&mPlugin.ServerOpts{
-		GRPCCacheFunc: func() *plugin.CacheServer {
-			return &plugin.CacheServer{
-				Impl: newMemoryCache(),
-			}
+		GRPCSessionFunc: func() session.Session {
+			return newMemorySession()
 		},
 	})
 }

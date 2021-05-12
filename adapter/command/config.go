@@ -52,11 +52,15 @@ var AppFileCommand = &cli.Command{
 							},
 						},
 					},
-					CacheConfig: config.Cache{
-						Name:      "memory or etcd",
-						Codecs:    []string{},
-						Endpoints: []string{},
-						CacheTime: 30,
+					Session: config.Session{
+						Name:   "memory",
+						Codecs: []string{},
+						Args: map[string]interface{}{
+							"endpoints": []string{""},
+							"username":  "",
+							"password":  "",
+							"ttl":       30,
+						},
 					},
 				},
 			},

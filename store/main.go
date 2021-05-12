@@ -13,28 +13,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/n-creativesystem/oidc-proxy/cache"
-
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
+	"github.com/n-creativesystem/oidc-proxy/session"
 )
 
 var sessionExpire = 86400 * 30
 
-type PluginClient interface {
-	Kill()
+type SessionStore struct {
+	session    session.Session
+	Options    *sessions.Options
+	StoreMutex sync.RWMutex
+	keyPairs   []securecookie.Codec
 }
 
-type CacheStore struct {
-	cache        cache.Cache
-	Options      *sessions.Options
-	StoreMutex   sync.RWMutex
-	keyPairs     []securecookie.Codec
-	pluginClient PluginClient
-}
-
-func (c *CacheStore) GetPluginClient() PluginClient {
-	return c.pluginClient
+func (c *SessionStore) Close() error {
+	if c.session != nil {
+		return c.session.Close()
+	}
+	return nil
 }
 
 type sessionValues map[interface{}]interface{}
@@ -64,18 +61,17 @@ func (s *sessionValues) jsonToMap(str string) error {
 	return nil
 }
 
-var _ sessions.Store = &CacheStore{}
+var _ sessions.Store = &SessionStore{}
 
-func NewStore(c cache.Cache, pluginClient PluginClient, codec ...[]byte) *CacheStore {
-	store := &CacheStore{
-		cache: c,
+func NewStore(c session.Session, codec ...[]byte) *SessionStore {
+	store := &SessionStore{
+		session: c,
 		Options: &sessions.Options{
 			Path:   "/",
 			MaxAge: sessionExpire,
 			Secure: true,
 		},
-		keyPairs:     securecookie.CodecsFromPairs(codec...),
-		pluginClient: pluginClient,
+		keyPairs: securecookie.CodecsFromPairs(codec...),
 	}
 	return store
 }
@@ -107,11 +103,11 @@ func decompress(compressionStr string) ([]byte, error) {
 	return buf, nil
 }
 
-func (c *CacheStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+func (c *SessionStore) Get(r *http.Request, name string) (*sessions.Session, error) {
 	return sessions.GetRegistry(r).Get(c, name)
 }
 
-func (c *CacheStore) New(r *http.Request, name string) (*sessions.Session, error) {
+func (c *SessionStore) New(r *http.Request, name string) (*sessions.Session, error) {
 	var err error
 	session := sessions.NewSession(c, name)
 	opts := *c.Options
@@ -127,7 +123,7 @@ func (c *CacheStore) New(r *http.Request, name string) (*sessions.Session, error
 	return session, err
 }
 
-func (c *CacheStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+func (c *SessionStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
 	if session.Options.MaxAge < 0 {
 		if err := c.Delete(session); err != nil {
 			return err
@@ -149,7 +145,7 @@ func (c *CacheStore) Save(r *http.Request, w http.ResponseWriter, session *sessi
 	return nil
 }
 
-func (c *CacheStore) save(session *sessions.Session) error {
+func (c *SessionStore) save(session *sessions.Session) error {
 	value := sessionValues(session.Values)
 	encoded, err := value.mapToJson()
 	if err != nil {
@@ -160,17 +156,17 @@ func (c *CacheStore) save(session *sessions.Session) error {
 	c.StoreMutex.Lock()
 	defer c.StoreMutex.Unlock()
 	key := "session_" + session.ID
-	return c.cache.Put(ctx, key, encoded)
+	return c.session.Put(ctx, key, encoded)
 }
 
-func (c *CacheStore) load(session *sessions.Session) error {
+func (c *SessionStore) load(session *sessions.Session) error {
 	values := sessionValues{}
 	ctx, cancel := getCancelContext()
 	defer cancel()
 	c.StoreMutex.Lock()
 	defer c.StoreMutex.Unlock()
 	key := "session_" + session.ID
-	value, err := c.cache.Get(ctx, key)
+	value, err := c.session.Get(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -182,11 +178,11 @@ func (c *CacheStore) load(session *sessions.Session) error {
 	return nil
 }
 
-func (c *CacheStore) Delete(session *sessions.Session) error {
+func (c *SessionStore) Delete(session *sessions.Session) error {
 	ctx, cancel := getCancelContext()
 	defer cancel()
 	c.StoreMutex.Lock()
 	defer c.StoreMutex.Unlock()
 	key := "session_" + session.ID
-	return c.cache.Delete(ctx, key)
+	return c.session.Delete(ctx, key)
 }

@@ -23,3 +23,11 @@ test.toml
 test.yaml
 test.yml
 plugin/memory
+/archive
+memory.log
+proxy
+/ssl/*
+!/ssl/command.sh
+/oidc-plugin
+/bin
+/dist

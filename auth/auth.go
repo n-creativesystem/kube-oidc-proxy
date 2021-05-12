@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	"fmt"
+	"net/url"
 
 	"github.com/n-creativesystem/oidc-proxy/config"
 
@@ -17,16 +17,17 @@ type Authenticator struct {
 	Ctx      context.Context
 }
 
-func NewAuthenticator(conf config.Servers) (*Authenticator, error) {
-	oidcConf := conf.Oidc
-	ctx := context.Background()
+func (a *Authenticator) setValue(url.Values) {
 
+}
+
+func NewAuthenticator(ctx context.Context, oidcConf config.Oidc) (*Authenticator, error) {
 	provider, err := oidc.NewProvider(ctx, oidcConf.Provider)
 	if err != nil {
-		conf.Log.Critical(fmt.Sprintf("failed to get provider: %v", err))
 		return nil, err
 	}
-	o2conf := oauth2.Config{
+	var o2conf oauth2.Config
+	o2conf = oauth2.Config{
 		ClientID:     oidcConf.ClientId,
 		ClientSecret: oidcConf.ClientSecret,
 		RedirectURL:  oidcConf.RedirectUrl,

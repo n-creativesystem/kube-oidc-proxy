@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 
 	"github.com/n-creativesystem/oidc-proxy/logger"
@@ -11,5 +12,6 @@ func init() {
 	// 	log.Fatalln(err)
 	// }
 
-	logger.Log = logger.New(os.Stdout, logger.Info)
+	logger.Log = logger.New(os.Stdout, logger.Info, logger.FormatStandard, logger.FormatDate)
+	log.SetOutput(logger.Log)
 }

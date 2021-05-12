@@ -3,33 +3,32 @@ package plugin
 import (
 	hplugin "github.com/hashicorp/go-plugin"
 	"github.com/n-creativesystem/oidc-proxy/plugin"
+	"github.com/n-creativesystem/oidc-proxy/session"
 	"google.golang.org/grpc"
 )
 
-const CachePluginName = "cache"
+const SeesionPluginName = "session"
 
 var Handshake = hplugin.HandshakeConfig{
-	MagicCookieKey:   "CACHE_PLUGIN",
+	MagicCookieKey:   "SESSION_PLUGIN",
 	MagicCookieValue: "m9erzlkcuac9gy4a2szc19j7xjleo4s4epwiio9opv8tjv9sid0qetl7cjo6ulkiskorqyg26pcsfyf979pgn28s5a7byfbq0n66",
 }
 
-type GRPCCacheFunc func() *plugin.CacheServer
+type GRPCSessionFunc func() session.Session
 
 type ServerOpts struct {
-	GRPCCacheFunc GRPCCacheFunc
-	TestConfig    *hplugin.ServeTestConfig
+	GRPCSessionFunc GRPCSessionFunc
+	TestConfig      *hplugin.ServeTestConfig
 }
 
 func Sever(opts *ServerOpts) {
-	provider := opts.GRPCCacheFunc()
+	provider := opts.GRPCSessionFunc()
 	hplugin.Serve(&hplugin.ServeConfig{
 		HandshakeConfig: Handshake,
 		VersionedPlugins: map[int]hplugin.PluginSet{
 			1: {
-				CachePluginName: &plugin.GRPCCachePlugin{
-					GRPCCache: func() *plugin.CacheServer {
-						return provider
-					},
+				SeesionPluginName: &plugin.GRPCSessionPlugin{
+					Impl: provider,
 				},
 			},
 		},
