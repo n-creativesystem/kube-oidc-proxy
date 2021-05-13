@@ -1,7 +1,6 @@
 package app
 
 import (
-	"log"
 	"os/exec"
 	"sync"
 
@@ -34,7 +33,6 @@ type StoreMap struct {
 func (s *StoreMap) Add(name string, dispose *Dispose) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	log.Println(name)
 	s.store[name] = dispose
 }
 
@@ -45,7 +43,6 @@ func (s *StoreMap) Dispose(name string) *Dispose {
 }
 
 func (s *StoreMap) Store(name string) *store.SessionStore {
-	log.Println(name)
 	return s.Dispose(name).Store
 }
 

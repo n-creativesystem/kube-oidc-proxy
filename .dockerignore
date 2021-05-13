@@ -1,5 +1,5 @@
 oidc-proxy
-/plugin/memory
+/oidc-plugin
 /ssl
 /.github
 /.devcontainer
@@ -13,3 +13,4 @@ README.md
 test.yaml
 application.yaml
 *.env
+Dockerfile

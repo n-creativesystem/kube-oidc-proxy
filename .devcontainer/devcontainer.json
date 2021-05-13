@@ -1,9 +1,9 @@
 {
-    "name": "kube-oidc-proxy-dev",
+    "name": "oidc-proxy-dev",
     "dockerComposeFile": [
         "../docker-compose.yaml",
     ],
-    "service": "kube-oidc-proxy-dev",
+    "service": "oidc-proxy-dev",
     "workspaceFolder": "/src",
     "settings": {
         "terminal.integrated.shell.linux": null
