@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"time"
 
 	mPlugin "github.com/n-creativesystem/oidc-proxy/examples/memory/plugin"
 	"github.com/n-creativesystem/oidc-proxy/logger"
@@ -22,9 +23,10 @@ type item struct {
 	Expires int64  `json:"expires"`
 }
 
-func newItem(value string) *item {
+func newItem(value string, expiredTime int64) *item {
 	return &item{
-		Value: value,
+		Value:   value,
+		Expires: expiredTime,
 	}
 }
 
@@ -33,10 +35,18 @@ func (i *item) ToJson() string {
 	return string(buf)
 }
 
+func (i *item) Expired(time int64) bool {
+	if i.Expires == 0 {
+		return true
+	}
+	return time > i.Expires
+}
+
 type memorySession struct {
 	items  map[string]*item
 	mu     sync.Mutex
 	prefix string
+	ttl    int
 }
 
 var _ session.Session = &memorySession{}
@@ -54,8 +64,9 @@ func (c *memorySession) Get(ctx context.Context, originalKey string) (string, er
 }
 func (c *memorySession) Put(ctx context.Context, originalKey string, value string) error {
 	c.mu.Lock()
+	expiredTime := time.Now().Add(time.Duration(c.ttl) * time.Minute).UnixNano()
 	key := path.Join(c.prefix, originalKey)
-	c.items[key] = newItem(value)
+	c.items[key] = newItem(value, expiredTime)
 	log.Debug(fmt.Sprintf("[PUT] %s:%s", key, value))
 	c.mu.Unlock()
 	return nil
@@ -99,6 +110,9 @@ func (c *memorySession) Init(ctx context.Context, setting map[string]interface{}
 	if logLevel, ok = setting["loglevel"].(string); !ok {
 		logLevel = logger.Info.String()
 	}
+	if ttl, ok := setting["ttl"].(int); ok {
+		c.ttl = ttl
+	}
 	log = logger.New(write, logger.Convert(logLevel), logger.FormatLong, logger.FormatDatetime)
 	log.Info(fmt.Sprintf("%#v", setting))
 	return nil
@@ -109,7 +123,24 @@ func newMemorySession() *memorySession {
 		items:  make(map[string]*item),
 		mu:     sync.Mutex{},
 		prefix: "memory",
+		ttl:    90,
 	}
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				c.mu.Lock()
+				for k, v := range c.items {
+					if v.Expired(time.Now().UnixNano()) {
+						delete(c.items, k)
+					}
+				}
+				c.mu.Unlock()
+			}
+		}
+	}()
 	return c
 }
 

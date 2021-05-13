@@ -91,12 +91,12 @@ type Servers struct {
 	Logging    Logging     `yaml:"logging" toml:"logging" json:"logging"`
 	CookieName string      `yaml:"cookie_name" toml:"cookie_name" json:"cookie_name"`
 	ServerName string      `yaml:"server_name" toml:"server_name" json:"server_name"`
+	Port       int         `yaml:"port" toml:"port" json:"port"`
 	Session    Session     `yaml:"session" toml:"session" json:"session"`
 	Login      string      `yaml:"login" toml:"login" json:"login"`
 	Callback   string      `yaml:"callback" toml:"callback" json:"callback"`
 	Logout     string      `yaml:"logout" toml:"logout" json:"logout"`
 	Redirect   bool        `yaml:"redirect" toml:"redirect" json:"redirect"`
-	port       string      `yaml:"-" toml:"-" json:"-"`
 }
 
 func (s *Servers) newSessionClient(client *hplugin.Client) session.Session {
@@ -124,7 +124,7 @@ func (s *Servers) newSessionClient(client *hplugin.Client) session.Session {
 	return storage
 }
 
-func (s *Servers) init(port string) {
+func (s *Servers) init() {
 	cmd := exec.Command(s.Session.GetSessionPlugin())
 	var sessionPlugin *hplugin.Client
 	var dispose *app.Dispose
@@ -152,7 +152,6 @@ func (s *Servers) init(port string) {
 		Store:  store,
 		Plugin: sessionPlugin,
 	})
-	s.port = port
 }
 
 func (s *Servers) Is() error {
@@ -167,7 +166,7 @@ func (s *Servers) Is() error {
 }
 
 func (s *Servers) GetHostname() string {
-	return s.ServerName + s.port
+	return s.ServerName + strconv.Itoa(s.Port)
 }
 
 // Oidc
@@ -341,7 +340,7 @@ func New(filename string) (Config, error) {
 		if err := server.Is(); err != nil {
 			return conf, err
 		}
-		server.init(conf.GetPort())
+		server.init()
 		conf.mapSrvConfig[s.ServerName] = server
 	}
 	return conf, nil

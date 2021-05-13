@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -15,7 +15,8 @@ func (m MultiHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if handler := m[r.Host]; handler != nil {
 		handler.ServeHTTP(w, r)
 	} else {
-		errorResponse(logger.Log)(w, r, errors.New(http.StatusText(http.StatusNotFound)))
+		err := fmt.Errorf("%s: %s", r.Host, http.StatusText(http.StatusNotFound))
+		errorResponse(logger.Log)(w, r, err)
 	}
 }
 
