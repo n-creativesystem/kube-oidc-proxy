@@ -1,6 +1,6 @@
 NAME := proxy
 MEMORY := memory
-VERSION := v1.0.0
+VERSION := v0.0.3-rc1
 REVISION := $(shell git rev-parse --short HEAD)
 SRCS    := $(shell find . -type d -name archive -prune -o -type f -name '*.go')
 LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
